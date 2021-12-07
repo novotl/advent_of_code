@@ -2,6 +2,8 @@ from typing import Iterable, Protocol
 from dataclasses import dataclass
 
 from advent_of_code.runner import PuzzleTemplate
+from statistics import median
+from functools import partial
 
 
 def sum_arithmetic_sequence(a_n: int) -> int:
@@ -59,15 +61,41 @@ class Puzzle(PuzzleTemplate):
         line = next(iter(lines))
         return cls([int(num) for num in line.split(",")])
 
-    def task_one(self, consumption_function: FuelConsumption = fuel_consumption_constant) -> int:
-        _min, _max = min(self.positions), max(self.positions)
-        return min(
-            sum(
-                consumption_function(position=position, target_position=depth)
-                for position in self.positions
-            )
-            for depth in range(_min, _max + 1)
+    def fuel_consumption(self, function: FuelConsumption, target_position: int) -> int:
+        return sum(
+            function(position=position, target_position=target_position)
+            for position in self.positions
         )
 
+    def task_one(self) -> int:
+        # we cannot move to float depth, either ceil or floor should give the same result
+        _median = int(median(self.positions))
+
+        return self.fuel_consumption(function=fuel_consumption_constant, target_position=_median)
+
     def task_two(self) -> int:
-        return self.task_one(consumption_function=fuel_consumption_linear)
+        """
+        We're looking for a minimum of function in the shape of U. It may have multiple minima,
+        but they should all be equal and "next to each other".
+        """
+        fuel_consumption = partial(self.fuel_consumption, function=fuel_consumption_linear)
+
+        left_bound, right_bound = min(self.positions), max(self.positions)
+
+        # Bisection method
+        while True:
+            half = left_bound + int((right_bound - left_bound) / 2)
+
+            half_cost = fuel_consumption(target_position=half)
+            look_left = fuel_consumption(target_position=half - 1)
+            look_right = fuel_consumption(target_position=half + 1)
+
+            if look_left >= half_cost <= look_right:
+                # going either left or right doesn't improve our position, we have global min
+                return half_cost
+
+            elif look_left < half_cost:
+                right_bound = half - 1
+
+            elif look_right < half_cost:
+                left_bound = half + 1
