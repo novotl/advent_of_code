@@ -6,6 +6,7 @@ from collections import defaultdict
 from pprint import pprint
 from functools import reduce
 from copy import deepcopy
+from advent_of_code.utils import invert_dictionary
 
 # 7 segment display mapping:
 #
@@ -26,6 +27,7 @@ from copy import deepcopy
 #  .    f  e    f  .    f  e    f  .    f
 #  .    f  e    f  .    f  e    f  .    f
 #   gggg    gggg    ....    gggg    gggg
+#
 LIT_SEGMENTS = {
     0: {"a", "b", "c", "e", "f", "g"},
     1: {"c", "f"},
@@ -40,18 +42,27 @@ LIT_SEGMENTS = {
 }
 
 
-by_lengths = defaultdict(list)
-for digit, segment in LIT_SEGMENTS.items():
-    by_lengths[len(segment)].append(digit)
+by_lengths = invert_dictionary(LIT_SEGMENTS, key=len)
 
 
-# TODO: the set has always only one element
-def mappings_to_digit(segments, mapping: dict[str, set[str]]):
-    mapped_segments = set(next(iter(mapping[segment])) for segment in segments)
+def segments_to_digit(segments: str, mapping: dict[str, str]) -> Optional[int]:
+    """
+    Given segments and segment mapping returns corresponding digit or None if it doesn't map to
+    a valid digit.
 
-    for k, v in LIT_SEGMENTS.items():
-        if v == mapped_segments:
-            return k
+        >>> segments_to_digit('ab', {'a': 'c', 'b': 'f'})
+        1
+
+        >>> segments_to_digit('abcd', {'a': 'b', 'b': 'f', 'c': 'c', 'd': 'd'})
+        4
+
+        >>> segments_to_digit('ef', {'e': 'a', 'f': 'b'})
+    """
+    mapped_segments = set(mapping[segment] for segment in segments)
+
+    for digit, lit_segments in LIT_SEGMENTS.items():
+        if lit_segments == mapped_segments:
+            return digit
 
     return None
 
@@ -70,56 +81,96 @@ class Entry:
         )
 
     @staticmethod
-    def assign(possible_mappings, option, segment) -> Optional[dict[str, list[str]]]:
+    def _assign(
+        possible_mappings: dict[str, set[str]], segment: str, option: str
+    ) -> Optional[dict[str, list[str]]]:
+        """
+        Assign a mapping and filter out all invalid options.
+
+
+            >>> mappings = {
+            ...     'a': {'a', 'b', 'c'},
+            ...     'b': {'a', 'c'},
+            ...     'c': {'d', 'b'}
+            ... }
+
+        Assigning mapping 'a -> b' rules out all other option for 'a' and also rules out 'b' as a valid
+        option for 'c'.
+
+            >>> Entry._assign(mappings, 'a', 'b') == {'a': {'b'}, 'b': {'a', 'c'}, 'c': {'d'}}
+            True
+        """
+
         next_mappings = deepcopy(possible_mappings)
-        for k, v in next_mappings.items():
-            if k == segment:
+        for segment_to_map, options in next_mappings.items():
+            # deal with this special case after for loop
+            if segment_to_map == segment:
                 continue
 
-            if option in v:
-                v.remove(option)
-            if not v:
+            if option in options:
+                options.remove(option)
+
+            if not options:
                 # some assumption is not valid, because we have no options left
-                print("constraint violated")
                 return None
         next_mappings[segment] = set(option)
 
         return next_mappings
 
-    def recursion(self, segments: list[str], possible_mappings: dict[str, str]):
+    @staticmethod
+    def _heuristics(segments: Iterable[str], possible_mappings: dict[str, set[str]]) -> list[str]:
+        """
+        Try segments with fewer options first to prune bad assumptions faster.
+
+            >>> Entry._heuristics('abc', {'a': {'a'}, 'b': {'a', 'b'}, 'c': {'a', 'b', 'c'}})
+            ['c', 'b', 'a']
+        """
+
+        # reverse because we use list.pop
+        return list(
+            sorted(segments, key=lambda segment: len(possible_mappings[segment]), reverse=True)
+        )
+
+    def recursion(
+        self, segments: list[str], possible_mappings: dict[str, set[str]]
+    ) -> Optional[dict[str, str]]:
+        """
+        Tries to guess a mapping and tests if it fits.
+
+        Eventually tries all possible mappings.
+        """
         if not segments:
-            # we have all mappings, need to check if all patterns are valid e.g. display a number
-            pprint(possible_mappings)
+            # we have some 1-1 mapping of segments, try if all patterns match to a number
+            assert all(1 == len(value) for value in possible_mappings.values())
+            final_mapping = {k: v.pop() for k, v in possible_mappings.items()}
 
-            for pattern in self.patterns:
-                digit = mappings_to_digit(pattern, possible_mappings)
-                if digit is None:
-                    print("constraint violated")
-                    return
-            print("Found solution!")
-            return possible_mappings
+            if all(
+                segments_to_digit(pattern, final_mapping) is not None for pattern in self.patterns
+            ):
+                return final_mapping
+            return None
 
+        # this level of recursion picks one segment and tries to map it to all valid options
         segment = segments.pop()
-
         options = list(sorted(possible_mappings[segment]))
-        # pick one option
-        for option in options:
-            print(f"Assume {segment} = {option} | options={options})")
-            next_mappings = self.assign(possible_mappings, option, segment)
-            if next_mappings is None:
-                continue
-            print("Candidate:")
-            pprint(next_mappings)
 
-            solution = self.recursion(list(segments), next_mappings)
+        for option in options:
+            next_mappings = self._assign(possible_mappings, segment, option)
+            if next_mappings is None:
+                # some segment has no options left, we made a bad assumption -> backtrack
+                continue
+
+            solution = self.recursion(self._heuristics(segments, next_mappings), next_mappings)
             if solution:
                 return solution
 
     def solve(self) -> int:
-        # broken segment -> original segment
+        # everything maps to everything
         possible_mappings = {char: set("abcdefg") for char in "abcdefg"}
 
-        # initial pruning
+        # initial pruning based on number of lit segments
+        # if we have lit 'ab' it may only map to one digit = 1 which is 'cf'
+        # so only valid options are `a -> {cf}` and `b -> {cf}`
         for pattern in self.patterns:
             matches = by_lengths[len(pattern)]
             all_valid_options = reduce(
@@ -131,21 +182,16 @@ class Entry:
                     all_valid_options
                 )
 
-        print("After initial pruning:")
-        pprint(possible_mappings)
-
-        # TODO: heuristics, iterate segments with lower number of options first
         mapping = self.recursion(
-            list(sorted(possible_mappings.keys(), reverse=True)), possible_mappings
+            self._heuristics(possible_mappings.keys(), possible_mappings), possible_mappings
         )
 
-        # 💩
-        a = mappings_to_digit(self.outputs[0], mapping)
-        b = mappings_to_digit(self.outputs[1], mapping)
-        c = mappings_to_digit(self.outputs[2], mapping)
-        d = mappings_to_digit(self.outputs[3], mapping)
-        x = a * 1000 + b * 100 + c * 10 + d
-        return x
+        assert mapping, "There is no valid assignment"
+
+        return sum(
+            segments_to_digit(segments, mapping) * 10 ** power
+            for power, segments in enumerate(reversed(self.outputs))
+        )
 
 
 @dataclass
@@ -157,7 +203,6 @@ class Puzzle(PuzzleTemplate):
         return cls(entries=[Entry.from_line(line) for line in lines])
 
     def task_one(self) -> int:
-
         total = 0
         for entry in self.entries:
             for digit in entry.outputs:
