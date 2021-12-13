@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Iterable, Optional, Type, TypeVar
+from typing import Callable, Iterable, Optional, Type, TypeVar, Union
 import click
 import time
 from datetime import timedelta
@@ -15,11 +15,11 @@ class PuzzleTemplate(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def task_one(self) -> int:
+    def task_one(self) -> Union[str, int]:
         raise NotImplementedError()
 
     @abstractmethod
-    def task_two(self) -> int:
+    def task_two(self) -> Union[str, int]:
         raise NotImplementedError()
 
 
@@ -37,7 +37,7 @@ def time_it(func: Callable[[], T]) -> T:
 def get_solution(path: Path) -> Optional[str]:
     if path.exists():
         with path.open() as f:
-            return "".join((line.strip() for line in f.readlines()))
+            return "\n".join((line.strip() for line in f.readlines()))
 
     return None
 
@@ -45,11 +45,11 @@ def get_solution(path: Path) -> Optional[str]:
 def verify_solution(actual: Any, expected: str):
     _actual = str(actual)
     if not expected:
-        print(f"\U00002753 {actual}")
+        print(f"\U00002753\n{actual}")
     elif expected == _actual:
-        print(f"\U00002705 {actual}")
+        print(f"\U00002705\n{actual}")
     else:
-        print(f"\U0000274C {actual}, the correct solution is: {expected}")
+        print(f"\U0000274C\n{actual}\n\nthe correct solution is:\n\n{expected}")
 
 
 class InstanceSize(Enum):
