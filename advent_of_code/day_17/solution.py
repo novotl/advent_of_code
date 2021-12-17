@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from advent_of_code.runner import PuzzleTemplate
 
+from math import ceil, sqrt
+
 
 @dataclass
 class Point:
@@ -117,15 +119,37 @@ class Puzzle(PuzzleTemplate):
         return max(
             filter(
                 lambda x: x is not None,
-                (self.simulate_shot(Point(x, y)) for x in range(0, 100) for y in range(0, 100)),
+                (
+                    self.simulate_shot(Point(x, y))
+                    for x in range(0, self.target.bottom_right.x + 1)
+                    for y in range(0, -self.target.bottom_right.y)
+                ),
             )
         )
 
     def task_two(self) -> int:
+        # x is decreasing by 1, e.g.: 5, 4, 3, 2, 1, 0, 0, 0, 0, ... and we need to reach at least
+        # `target.top_left.x`. Sum of arithmetic sequence is S_n = n*(a_1 + a_n)/2, so for our
+        # initial x velocity, we reach at most: (x * (x+1)) / 2
+        # solve for x we get minimum required bound
+        # min_x = (-1 + sqrt(1 + c * target.min_x))/2
+        min_x = ceil((-1 + sqrt(1 + 2 * self.target.top_left.x)) / 2)
+
+        # we would overshoot in the first step
+        max_x = self.target.bottom_right.x
+
+        # the y goes like this: 3, 2, 1, 0, -1, -2, -3
+        # so when it passes y=0 it has velocity = -y_initial
+        # and if it's lower than target.min_y we would undershoot it
+        max_y = -self.target.bottom_right.y
+
+        # we would undershoot in the first step
+        min_y = self.target.bottom_right.y
+
         initial = [
             (x, y)
-            for x in range(0, 500)
-            for y in range(-500, 500)
+            for x in range(min_x, max_x + 1)
+            for y in range(min_y, max_y)
             if self.simulate_shot(Point(x, y)) is not None
         ]
 
