@@ -189,7 +189,7 @@ class Entry:
         assert mapping, "There is no valid assignment"
 
         return sum(
-            segments_to_digit(segments, mapping) * 10 ** power
+            segments_to_digit(segments, mapping) * 10**power
             for power, segments in enumerate(reversed(self.outputs))
         )
 
