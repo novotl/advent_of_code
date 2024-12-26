@@ -1,0 +1,4 @@
+# Ingnore input files
+*.small*
+*.big*
+*.tiny*
